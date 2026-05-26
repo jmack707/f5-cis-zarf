@@ -1,0 +1,84 @@
+# values/f5-bigip-ctlr.yaml
+# ---------------------------------------------------------------------------
+# Helm values for f5networks/f5-bigip-ctlr chart v0.0.35
+# All ###ZARF_VAR_*### tokens are substituted by Zarf at deploy time.
+# Keys here match the upstream chart's values.yaml — do not invent keys.
+# Reference: https://github.com/F5Networks/charts/tree/master/src/stable/f5-bigip-ctlr
+# ---------------------------------------------------------------------------
+
+# Name of the Kubernetes secret in kube-system that holds BIG-IP credentials.
+# Format: { username: <base64>, password: <base64> }
+# Created by Ansible credentials_create.yaml — must exist before deploy.
+bigip_login_secret: bigip-login
+
+# BIG-IP management URL. The https:// scheme is required by CIS.
+bigip_url: "https://###ZARF_VAR_BIGIP_URL###"
+
+# Image configuration. Zarf rewrites `repository` at deploy time to point to
+# the internal registry, but the tag must match the bundled image exactly.
+image:
+  # user and repo are combined as <user>/<repo> by the chart template.
+  user: f5networks
+  repo: k8s-bigip-ctlr
+  tag: "###ZARF_VAR_CIS_VERSION###"
+  pullPolicy: IfNotPresent
+
+# CIS runtime arguments passed as CLI flags to the controller binary.
+args:
+  # BIG-IP management endpoint — must match bigip_url above.
+  bigip_url: "https://###ZARF_VAR_BIGIP_URL###"
+
+  # Partition CIS will manage. Must exist on BIG-IP before CIS starts.
+  bigip_partition: "###ZARF_VAR_BIGIP_PARTITION###"
+
+  # Kubernetes namespace to watch. Empty string = all namespaces (cluster-wide).
+  namespace: ""
+
+  # CIS mode: "nodeport" uses k8s NodePort services for pool members;
+  # "cluster" uses pod IPs directly. "cluster" requires BIG-IP flannel VXLAN
+  # or similar CNI integration. Use "nodeport" for typical lab setups.
+  pool_member_type: "nodeport"
+
+  # Log verbosity: 0 = errors only, 4 = debug, 10 = trace.
+  # Start at 4 during initial deployment, reduce to 2 in steady state.
+  log_level: "INFO"
+
+  # CRD-based config (VirtualServer, TransportServer, IngressLink).
+  # Set to true to enable the CIS CRD controller mode in addition to ingress.
+  custom_resource_mode: true
+
+  # Schema validation mode for AS3 declarations sent to BIG-IP.
+  # "disabled" avoids failures if BIG-IP is on an older AS3 version.
+  as3_validation: true
+
+  # Override service to use for IPAM controller if deployed alongside CIS.
+  # ipam: false
+
+  # insecure_skip_verify: true  # Uncomment if BIG-IP uses a self-signed cert
+
+# Number of CIS replicas. Only one instance may be active at a time;
+# HA via leader election is not yet supported.
+replicaCount: 1
+
+# Resource limits — tune based on cluster node capacity.
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Node affinity / tolerations — leave empty for lab; tighten for production.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Service account name — chart creates this automatically.
+serviceAccount:
+  create: true
+  name: ""
+
+# RBAC — required for CIS to watch/update resources.
+rbac:
+  create: true

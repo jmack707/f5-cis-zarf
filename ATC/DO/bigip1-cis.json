@@ -1,0 +1,96 @@
+{
+  "$schema": "https://raw.githubusercontent.com/F5Networks/f5-declarative-onboarding/master/src/schema/latest/base.schema.json",
+  "class": "DO",
+  "version": "1.44.0",
+  "declaration": {
+    "class": "Device",
+    "schemaVersion": "1.0.0",
+    "label": "F5 CIS Lab BIG-IP",
+    "remark": "Declarative Onboarding for the CIS lab node. Applied once during initial setup via Ansible. Re-apply carefully — DO is idempotent but some changes (e.g., hostname) require a reboot.",
+    "Common": {
+      "class": "Tenant",
+      "hostname": "bigip1-cis.lab.test.local",
+      "myDns": {
+        "class": "DNS",
+        "nameServers": [
+          "8.8.8.8",
+          "8.8.4.4"
+        ],
+        "search": [
+          "lab.test.local"
+        ]
+      },
+      "myNtp": {
+        "class": "NTP",
+        "servers": [
+          "pool.ntp.org"
+        ],
+        "timezone": "America/New_York"
+      },
+      "myProvisioning": {
+        "class": "Provision",
+        "ltm": "nominal",
+        "gtm": "none",
+        "asm": "none",
+        "afm": "none"
+      },
+      "myVlan_mgmt": {
+        "class": "VLAN",
+        "tag": 0,
+        "mtu": 1500,
+        "interfaces": [
+          {
+            "name": "mgmt",
+            "tagged": false
+          }
+        ]
+      },
+      "myVlan_internal": {
+        "class": "VLAN",
+        "tag": 10,
+        "mtu": 1500,
+        "interfaces": [
+          {
+            "name": "1.1",
+            "tagged": false
+          }
+        ]
+      },
+      "myVlan_external": {
+        "class": "VLAN",
+        "tag": 20,
+        "mtu": 1500,
+        "interfaces": [
+          {
+            "name": "1.2",
+            "tagged": false
+          }
+        ]
+      },
+      "myInternal": {
+        "class": "SelfIp",
+        "address": "10.1.20.240/24",
+        "vlan": "myVlan_internal",
+        "allowService": "default",
+        "trafficGroup": "traffic-group-local-only"
+      },
+      "myExternal": {
+        "class": "SelfIp",
+        "address": "10.1.10.240/24",
+        "vlan": "myVlan_external",
+        "allowService": "none",
+        "trafficGroup": "traffic-group-local-only"
+      },
+      "myRoute": {
+        "class": "Route",
+        "gw": "10.1.10.1",
+        "network": "default",
+        "mtu": 1500
+      },
+      "k8s": {
+        "class": "Partition",
+        "remark": "Partition managed by CIS (BIGIP_PARTITION in zarf-config.yaml). CIS will create virtual servers and pools here."
+      }
+    }
+  }
+}

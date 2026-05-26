@@ -1,0 +1,3 @@
+# Place your Harbor self-signed CA certificate here as harbor-ca.crt
+# Export it from: Harbor UI → Administration → Configuration → CA Certificate
+# This file must be transferred to the air-gap node alongside the Zarf package.

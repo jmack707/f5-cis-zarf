@@ -1,0 +1,74 @@
+{
+  "$schema": "https://raw.githubusercontent.com/F5Networks/f5-appsvcs-extension/master/schema/latest/as3-schema.json",
+  "class": "AS3",
+  "action": "deploy",
+  "persist": true,
+  "declaration": {
+    "class": "ADC",
+    "schemaVersion": "3.36.0",
+    "id": "f5-cis-lab-as3",
+    "label": "F5 CIS Lab — managed by Ansible + CIS",
+    "remark": "Base AS3 declaration. CIS will dynamically patch virtualAddresses and pool members based on Kubernetes VirtualServer / TransportServer CRs. Do not manually edit pool members — CIS owns them.",
+    "k8s": {
+      "class": "Tenant",
+      "_comment": "Tenant name must match bigip_partition in CIS values (zarf-config.yaml BIGIP_PARTITION).",
+      "Shared": {
+        "class": "Application",
+        "template": "shared",
+        "k8s_http_vs": {
+          "class": "Service_HTTP",
+          "remark": "HTTP virtual server — CIS patches virtualAddresses via IngressLink or VirtualServer CRs",
+          "virtualAddresses": [
+            "10.1.10.100"
+          ],
+          "pool": "k8s_http_pool",
+          "iRules": []
+        },
+        "k8s_https_vs": {
+          "class": "Service_HTTPS",
+          "remark": "HTTPS virtual server with SSL offload",
+          "virtualAddresses": [
+            "10.1.10.100"
+          ],
+          "pool": "k8s_https_pool",
+          "serverTLS": "k8s_tls_server",
+          "redirect80": true
+        },
+        "k8s_http_pool": {
+          "class": "Pool",
+          "remark": "HTTP backend pool — members managed by CIS (NodePort mode)",
+          "monitors": [
+            "http"
+          ],
+          "members": []
+        },
+        "k8s_https_pool": {
+          "class": "Pool",
+          "remark": "HTTPS backend pool — members managed by CIS",
+          "monitors": [
+            "https"
+          ],
+          "members": []
+        },
+        "k8s_tls_server": {
+          "class": "TLS_Server",
+          "certificates": [
+            {
+              "certificate": "k8s_cert"
+            }
+          ]
+        },
+        "k8s_cert": {
+          "class": "Certificate",
+          "remark": "Replace with a real cert or reference a cert-manager issued cert",
+          "certificate": {
+            "bigip": "/Common/default.crt"
+          },
+          "privateKey": {
+            "bigip": "/Common/default.key"
+          }
+        }
+      }
+    }
+  }
+}

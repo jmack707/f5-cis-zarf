@@ -1,0 +1,14 @@
+# Credentials — never commit the real file; commit only *.example
+credentials.env
+.env
+
+# Harbor CA cert (site-specific, not project config)
+certs/harbor-ca.crt
+
+# Zarf build artifacts
+*.tar.zst
+*.tar.zst.sha256
+*.tar.zst.bundle
+
+# Ansible vault password file if stored locally
+.vault-pass

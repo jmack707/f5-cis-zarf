@@ -1,0 +1,255 @@
+kind: ZarfPackageConfig
+metadata:
+  name: f5-cis-nginx-stack
+  version: 1.0.0
+  description: >-
+    Air-gapped deployment of F5 BIG-IP CIS, NGINX Plus Ingress Controller with
+    App Protect WAF, and cert-manager on k3s.
+    BIG-IP secrets (bigip-login, license-token) and DO/AS3 config are managed
+    separately by Ansible and MUST be applied before this package is deployed.
+  architecture: amd64
+  # yolo: true   # Uncomment to skip signature verification during dev
+
+# ---------------------------------------------------------------------------
+# Zarf variables — all environment-specific values.
+# Overridden at create time:  zarf package create --set KEY=value
+# Overridden at deploy time:  zarf package deploy --set KEY=value
+# Or set defaults in zarf-config.yaml (operators should prefer that file).
+# ---------------------------------------------------------------------------
+variables:
+  - name: BIGIP_URL
+    default: "10.1.1.12"
+    description: "BIG-IP management IP (used in CIS chart args)"
+    prompt: false
+
+  - name: BIGIP_PARTITION
+    default: "k8s"
+    description: "BIG-IP partition that CIS manages"
+    prompt: false
+
+  - name: REGISTRY_HOST
+    default: "harbor.test.local"
+    description: "FQDN of the Harbor private registry (no scheme)"
+    prompt: false
+
+  - name: REGISTRY_PROJECT
+    default: "library"
+    description: "Harbor project / repository prefix"
+    prompt: false
+
+  - name: CIS_VERSION
+    default: "2.20.3"
+    description: "k8s-bigip-ctlr image tag"
+    prompt: false
+
+  - name: NGINX_VERSION
+    default: "5.3.2"
+    description: "nginx-plus-ingress image tag"
+    prompt: false
+
+  - name: CERT_MANAGER_VERSION
+    default: "v1.19.1"
+    description: "cert-manager controller/cainjector/webhook image tag and chart version"
+    prompt: false
+
+  - name: CLUSTER_ISSUER
+    default: "lab-self-signed"
+    description: "cert-manager ClusterIssuer name to create post-deploy"
+    prompt: false
+
+components:
+  # -------------------------------------------------------------------------
+  # f5-cis
+  # Controller: docker.io/f5networks/k8s-bigip-ctlr
+  # Chart:      oci://registry-1.docker.io/f5networks/f5-bigip-ctlr v0.0.35
+  # Namespace:  kube-system
+  #
+  # DEPENDENCY: Ansible must have created the bigip-login secret in kube-system
+  # before this component deploys. The chart will fail ImagePullBackOff or
+  # CrashLoopBackOff immediately without it.
+  # -------------------------------------------------------------------------
+  - name: f5-cis
+    required: true
+    description: "F5 BIG-IP Container Ingress Services controller"
+
+    images:
+      # Zarf bundles this image during `create`. Tag is resolved from the
+      # CIS_VERSION variable at create time via --set CIS_VERSION=<tag>.
+      - docker.io/f5networks/k8s-bigip-ctlr:###ZARF_VAR_CIS_VERSION###
+
+    charts:
+      - name: f5-bigip-ctlr
+        # OCI chart on Docker Hub; Zarf pulls and embeds during create.
+        url: oci://registry-1.docker.io/f5networks/f5-bigip-ctlr
+        version: "0.0.35"
+        namespace: kube-system
+        valuesFiles:
+          - values/f5-bigip-ctlr.yaml
+
+    actions:
+      onDeploy:
+        before:
+          - description: "Ensure kube-system namespace exists"
+            cmd: "kubectl get namespace kube-system >/dev/null 2>&1 || kubectl create namespace kube-system"
+            shell:
+              linux: bash
+          - description: "Verify bigip-login secret exists (Ansible prereq)"
+            # Hard-fail here so operators know what went wrong rather than
+            # seeing a cryptic CIS CrashLoopBackOff later.
+            cmd: |
+              if ! kubectl get secret bigip-login -n kube-system >/dev/null 2>&1; then
+                echo "ERROR: bigip-login secret not found in kube-system."
+                echo "Run the Ansible credentials_create.yaml playbook first."
+                exit 1
+              fi
+            shell:
+              linux: bash
+        after:
+          - description: "Wait for CIS controller rollout"
+            cmd: "kubectl rollout status deployment/f5-bigip-ctlr -n kube-system --timeout=120s"
+            shell:
+              linux: bash
+
+  # -------------------------------------------------------------------------
+  # nginx-ingress
+  # Image:    private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress
+  # Chart:    oci://ghcr.io/nginxinc/charts/nginx-ingress v2.1.0
+  # Namespace: nginx-ingress
+  #
+  # IMPORTANT: The NGINX Plus image uses JWT-based auth against
+  # private-registry.nginx.com. The create-package.sh script logs in with the
+  # JWT before calling `zarf package create`. At deploy time, Zarf serves the
+  # image from its internal registry — no outbound connectivity needed.
+  #
+  # DEPENDENCY: Ansible must have created the license-token imagePullSecret in
+  # nginx-ingress before this component deploys.
+  # -------------------------------------------------------------------------
+  - name: nginx-ingress
+    required: true
+    description: "NGINX Plus Ingress Controller with App Protect WAF"
+
+    images:
+      - private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:###ZARF_VAR_NGINX_VERSION###
+
+    charts:
+      - name: nginx-ingress
+        url: oci://ghcr.io/nginxinc/charts/nginx-ingress
+        version: "2.1.0"
+        namespace: nginx-ingress
+        valuesFiles:
+          - values/nginx-ingress.yaml
+
+    actions:
+      onDeploy:
+        before:
+          - description: "Create nginx-ingress namespace"
+            cmd: "kubectl get namespace nginx-ingress >/dev/null 2>&1 || kubectl create namespace nginx-ingress"
+            shell:
+              linux: bash
+          - description: "Verify license-token secret exists (Ansible prereq)"
+            cmd: |
+              if ! kubectl get secret license-token -n nginx-ingress >/dev/null 2>&1; then
+                echo "ERROR: license-token secret not found in nginx-ingress."
+                echo "Run the Ansible credentials_create.yaml playbook first."
+                exit 1
+              fi
+            shell:
+              linux: bash
+        after:
+          - description: "Wait for NGINX IC deployment"
+            cmd: "kubectl rollout status deployment -n nginx-ingress --timeout=180s"
+            shell:
+              linux: bash
+
+  # -------------------------------------------------------------------------
+  # cert-manager  [OPTIONAL -- not deployed by default]
+  # Chart:    https://charts.jetstack.io (traditional Helm repo)
+  # Namespace: cert-manager
+  #
+  # Excluded from the default component list in zarf-config.yaml.
+  # To include cert-manager, add it to the components list before deploying:
+  #
+  #   zarf package deploy ... \
+  #     --components f5-cis,nginx-ingress,app-images,cert-manager
+  #
+  # Or edit zarf-config.yaml:
+  #   components: "f5-cis,nginx-ingress,app-images,cert-manager"
+  #
+  # installCRDs is set in values/cert-manager.yaml. CRDs are bundled into
+  # the package at create time regardless -- only the install is skipped.
+  # -------------------------------------------------------------------------
+  - name: cert-manager
+    required: false
+    description: "cert-manager TLS certificate lifecycle management (opt-in)"
+
+    images:
+      - quay.io/jetstack/cert-manager-controller:###ZARF_VAR_CERT_MANAGER_VERSION###
+      - quay.io/jetstack/cert-manager-cainjector:###ZARF_VAR_CERT_MANAGER_VERSION###
+      - quay.io/jetstack/cert-manager-webhook:###ZARF_VAR_CERT_MANAGER_VERSION###
+      # ctl is used by some cert-manager tooling; bundle it to avoid surprises
+      - quay.io/jetstack/cert-manager-ctl:###ZARF_VAR_CERT_MANAGER_VERSION###
+
+    charts:
+      - name: cert-manager
+        url: https://charts.jetstack.io
+        # repoName is inferred from the URL; explicit for clarity
+        repoName: jetstack
+        version: "###ZARF_VAR_CERT_MANAGER_VERSION###"
+        namespace: cert-manager
+        valuesFiles:
+          - values/cert-manager.yaml
+
+    actions:
+      onDeploy:
+        before:
+          - description: "Create cert-manager namespace"
+            cmd: "kubectl get namespace cert-manager >/dev/null 2>&1 || kubectl create namespace cert-manager"
+            shell:
+              linux: bash
+        after:
+          # The webhook must be Ready before any cert-manager CRs can be applied.
+          # Cert-manager docs recommend a 10s sleep after rollout as well because
+          # the webhook's TLS bootstrap is async.
+          - description: "Wait for cert-manager webhook rollout"
+            cmd: "kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=120s"
+            shell:
+              linux: bash
+          - description: "Wait for webhook TLS bootstrap"
+            cmd: "sleep 10"
+            shell:
+              linux: bash
+          - description: "Apply self-signed ClusterIssuer"
+            cmd: |
+              kubectl apply -f - <<'EOF'
+              apiVersion: cert-manager.io/v1
+              kind: ClusterIssuer
+              metadata:
+                name: ###ZARF_VAR_CLUSTER_ISSUER###
+                annotations:
+                  app.kubernetes.io/managed-by: zarf
+              spec:
+                selfSigned: {}
+              EOF
+            shell:
+              linux: bash
+
+  # -------------------------------------------------------------------------
+  # app-images
+  # Demo and utility images not driven by a Helm chart in this package.
+  # Bundle them so they are available in the air-gapped registry for ad-hoc
+  # deployments, testing, and the F5 CIS execution environment.
+  # required: false — operators can skip to keep package size down.
+  # -------------------------------------------------------------------------
+  - name: app-images
+    required: false
+    description: "Demo/utility images: nginx-hello, syslog-ng, f5_cis_ee"
+
+    images:
+      - docker.io/nginxdemos/nginx-hello:latest
+      - docker.io/balabit/syslog-ng:latest
+      # Source manifest specifies docker_tag: latest; original prompt table said
+      # 1.0.0. Using latest to match the source manifest — pin to a digest or
+      # explicit tag in production to avoid non-deterministic builds.
+      - docker.io/dialtone21/f5_cis_ee:latest
+    # No chart or manifests — images only. Reference them in your own
+    # Kubernetes manifests after deploy using the Zarf-rewritten registry path.
