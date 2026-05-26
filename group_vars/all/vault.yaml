@@ -1,0 +1,19 @@
+# group_vars/all/vault.yaml
+# ---------------------------------------------------------------------------
+# Sensitive credentials — encrypt this file with ansible-vault.
+#
+# Setup:
+#   1. Fill in the values below
+#   2. Encrypt: ansible-vault encrypt group_vars/all/vault.yaml
+#   3. Run playbook: ansible-playbook -i inventory/hosts ccn-cis/credentials_create.yaml --ask-vault-pass
+#
+# To edit later: ansible-vault edit group_vars/all/vault.yaml
+# ---------------------------------------------------------------------------
+
+# BIG-IP credentials (used to create the bigip-login secret in kube-system)
+vault_bigip_username: "admin"
+vault_bigip_password: "your-bigip-password-here"
+
+# Path to your NGINX Plus .jwt license file on the Ansible control node.
+# This file is read locally and its contents are stored as a Kubernetes secret.
+vault_nginx_jwt_path: "/home/ubuntu/f5-cis-zarf/nginx-repo.jwt"

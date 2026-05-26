@@ -1,61 +1,46 @@
 # zarf-config.yaml
 # ---------------------------------------------------------------------------
-# Default variable values for the f5-cis-nginx-stack Zarf package.
-# Place this file in the same directory you run `zarf package deploy` from,
-# OR pass its path with:  zarf package deploy --config zarf-config.yaml
+# Config file for the f5-cis-nginx-stack Zarf package.
+# Reference: https://docs.zarf.dev/ref/config-files/
 #
-# Precedence (highest → lowest):
-#   1. --set KEY=value flags on the CLI
-#   2. ZARF_VAR_<KEY> environment variables
-#   3. Values in this file
-#   4. defaults declared in zarf.yaml
+# Precedence (highest to lowest):
+#   1. CLI flags
+#   2. ZARF_* environment variables
+#   3. This config file
+#   4. Defaults in zarf.yaml
 #
-# All values here should be reviewed and adjusted per environment before
-# carrying the package across the air-gap boundary.
+# Note: --confirm is NOT supported in config files. Pass it on the CLI.
 # ---------------------------------------------------------------------------
 
 package:
+  create:
+    # Package template variables (--set on zarf package create)
+    set:
+      CIS_VERSION: "2.20.3"
+      NGINX_VERSION: "5.4.3"
+      CERT_MANAGER_VERSION: "v1.20.2"
+
   deploy:
-    # Set to true to accept all prompts non-interactively (useful in scripts).
-    # deploy-package.sh passes --confirm directly; leave false here.
-    confirm: false
-
     # Comma-separated list of components to deploy.
-    # cert-manager is excluded by default — add it to this list to deploy it:
-    #   components: "f5-cis,nginx-ingress,app-images,cert-manager"
-    # app-images (demo/utility images) can also be dropped from this list if
-    # you don't need nginx-hello, syslog-ng, or f5_cis_ee in the air-gap registry.
-    components: "f5-cis,nginx-ingress,app-images"
+    # Required components (f5-cis, nginx-ingress) deploy regardless.
+    # cert-manager is optional — add it to this list to deploy it:
+    #   components: "app-images,cert-manager"
+    components: "app-images"
 
-    # Variable overrides — edit these for your environment.
+    # Zarf variable overrides (--set-variables on zarf package deploy)
     set:
       # ---------- BIG-IP --------------------------------------------------
-      # Management IP of the BIG-IP appliance CIS will control.
       BIGIP_URL: "10.1.1.12"
-
-      # BIG-IP partition CIS will use for virtual servers, pools, and nodes.
-      # This partition must already exist; CIS will not create it.
       BIGIP_PARTITION: "k8s"
 
       # ---------- Registry ------------------------------------------------
-      # FQDN of the Harbor private registry (no https:// prefix).
-      # Must be reachable from all k3s nodes at deploy time.
       REGISTRY_HOST: "harbor.test.local"
-
-      # Harbor project that holds the mirrored images and charts.
-      # Default project for Harbor is "library".
       REGISTRY_PROJECT: "library"
 
-      # ---------- Component versions --------------------------------------
-      # These must match the image tags you pulled during `zarf package create`.
-      # If you change them here without recreating the package, deploy will fail
-      # because the new tag won't be in the bundle.
+      # ---------- Component versions -------------------------------------
       CIS_VERSION: "2.20.3"
-      NGINX_VERSION: "5.3.2"
-      CERT_MANAGER_VERSION: "v1.19.1"
+      NGINX_VERSION: "5.4.3"
+      CERT_MANAGER_VERSION: "v1.20.2"
 
-      # ---------- cert-manager --------------------------------------------
-      # Name of the ClusterIssuer that will be created after cert-manager
-      # is deployed. A self-signed issuer is created automatically; you can
-      # replace it with a CA or ACME issuer post-deploy.
+      # ---------- cert-manager -------------------------------------------
       CLUSTER_ISSUER: "lab-self-signed"

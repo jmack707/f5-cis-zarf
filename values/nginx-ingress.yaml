@@ -1,92 +1,87 @@
 # values/nginx-ingress.yaml
 # ---------------------------------------------------------------------------
-# Helm values for nginxinc/nginx-ingress chart v2.1.0
-# NGINX Plus Ingress Controller with App Protect WAF enabled.
+# Helm values for nginx/nginx-ingress chart v2.5.3 (NGINX Plus)
+# Reference: https://docs.nginx.com/nginx-ingress-controller/install/helm/plus/
 # All ###ZARF_VAR_*### tokens are substituted by Zarf at deploy time.
-# Reference: https://docs.nginx.com/nginx-ingress-controller/installation/installing-nic/installation-with-helm/
 # ---------------------------------------------------------------------------
 
 controller:
   # ---------------------------------------------------------------------------
-  # Image configuration.
-  # Zarf rewrites `repository` at deploy time to its internal registry, but
-  # preserves the image name and tag. The rewrite targets the exact string
-  # listed in zarf.yaml images[], so repository + ":" + tag must match.
+  # Image — Zarf rewrites repository at deploy time to its internal registry.
+  # NAP variant: nginx-ic-nap/nginx-plus-ingress
+  # Non-NAP:     nginx-ic/nginx-plus-ingress
   # ---------------------------------------------------------------------------
   image:
     repository: private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress
     tag: "###ZARF_VAR_NGINX_VERSION###"
     pullPolicy: IfNotPresent
 
-  # Enable NGINX Plus (required for App Protect WAF)
+  # NGINX Plus (required for App Protect WAF and mgmt block below)
   nginxplus: true
 
-  # Deployment kind: Deployment (preferred for rolling updates) or DaemonSet.
   kind: deployment
   replicaCount: 1
 
   # ---------------------------------------------------------------------------
-  # App Protect WAF (NAP)
+  # NGINX Plus license management (required as of NIC 5.x)
+  # nplus-license is a generic secret created from license.jwt:
+  #   kubectl create secret generic nplus-license --from-file license.jwt
+  # Created by Ansible credentials_create.yaml before this chart deploys.
+  # ---------------------------------------------------------------------------
+  mgmt:
+    licenseTokenSecretName: nplus-license
+
+  # ---------------------------------------------------------------------------
+  # App Protect WAF
   # ---------------------------------------------------------------------------
   appprotect:
     enable: true
-    # Log level for App Protect daemon: fatal, error, warn, info, debug, trace
     logLevel: warn
 
   appprotectdos:
-    enable: false  # Enable if you have a NGINX App Protect DoS license
+    enable: false
 
   # ---------------------------------------------------------------------------
-  # Ingress class configuration
+  # Ingress class
   # ---------------------------------------------------------------------------
   ingressClass:
-    # Name of the IngressClass resource this controller owns.
     name: nginx
-    # Set to true if this is the default ingress controller for the cluster.
     setAsDefaultIngress: false
 
   # ---------------------------------------------------------------------------
-  # Service configuration
+  # Service
   # ---------------------------------------------------------------------------
   service:
-    # LoadBalancer requires a load balancer provider (MetalLB, F5 CIS IPAM, etc.)
-    # Use NodePort if you don't have an LB provider in your lab.
     type: LoadBalancer
     externalTrafficPolicy: Local
-    # Uncomment to pin the LoadBalancer IP (e.g., when using CIS IPAM):
-    # loadBalancerIP: ""
     httpPort: 80
     httpsPort: 443
     annotations: {}
 
   # ---------------------------------------------------------------------------
-  # ServiceAccount and image pull secret
+  # ServiceAccount and imagePullSecret
+  # regcred is a docker-registry secret where:
+  #   username = JWT content  (not the string "jwt")
+  #   password = "none"       (literally the string none)
+  # Created by Ansible credentials_create.yaml.
+  # Reference: https://docs.nginx.com/nginx-ingress-controller/install/helm/plus/
   # ---------------------------------------------------------------------------
   serviceAccount:
     create: true
     name: ""
-    # license-token is created by Ansible credentials_create.yaml.
-    # It is referenced here as an imagePullSecret for the NGINX Plus image.
-    # Even though Zarf serves the image from its internal registry at deploy
-    # time, keep this configured so it works correctly post-migration if the
-    # cluster is pointed directly at Harbor.
-    imagePullSecretName: license-token
+    imagePullSecretName: regcred
 
   # ---------------------------------------------------------------------------
   # NGINX configuration
   # ---------------------------------------------------------------------------
   config:
-    # Global NGINX configuration entries. Key-value pairs become nginx.conf
-    # directives in the main/http context.
     entries:
-      # Increase keepalive connections to BIG-IP virtual servers.
       keepalive: "32"
-      # Real IP header set by F5 BIG-IP (XFF header passthrough).
       real-ip-header: "X-Forwarded-For"
       set-real-ip-from: "0.0.0.0/0"
 
   # ---------------------------------------------------------------------------
-  # Resource limits
+  # Resources
   # ---------------------------------------------------------------------------
   resources:
     requests:
@@ -97,11 +92,10 @@ controller:
       memory: 1Gi
 
   # ---------------------------------------------------------------------------
-  # CRD / VirtualServer configuration
+  # Custom resources and cert-manager integration
   # ---------------------------------------------------------------------------
   enableCustomResources: true
-  enablePreviewPolicies: false
-  enableCertManager: true   # Integrates with cert-manager for TLS automation
+  enableCertManager: true
 
   # ---------------------------------------------------------------------------
   # Prometheus metrics
@@ -111,26 +105,14 @@ controller:
     create: true
     port: 9113
     scheme: http
-    # Optionally add ServiceMonitor for Prometheus Operator:
-    # serviceMonitor:
-    #   create: false
 
-  # ---------------------------------------------------------------------------
-  # Health/readiness
-  # ---------------------------------------------------------------------------
   readyStatus:
     enable: true
     port: 8081
 
-  # ---------------------------------------------------------------------------
-  # Node placement
-  # ---------------------------------------------------------------------------
   nodeSelector: {}
   tolerations: []
   affinity: {}
 
-# ---------------------------------------------------------------------------
-# RBAC — required for NGINX IC to watch Ingress/VirtualServer resources.
-# ---------------------------------------------------------------------------
 rbac:
   create: true

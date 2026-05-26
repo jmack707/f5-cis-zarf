@@ -84,13 +84,16 @@ The full workflow has three phases: **build**, **transfer**, **deploy**.
 ## 1. Prerequisites Setup
 
 ```bash
-# Install Zarf (latest stable)
-ZARF_VERSION=$(curl -s https://api.github.com/repos/defenseunicorns/zarf/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-sudo curl -Lo /usr/local/bin/zarf "https://github.com/defenseunicorns/zarf/releases/download/${ZARF_VERSION}/zarf_${ZARF_VERSION}_Linux_amd64"
-sudo chmod +x /usr/local/bin/zarf
-zarf version
+# Install Zarf (hardcoded version avoids GitHub API rate-limiting)
+# Check for newer releases at: https://github.com/defenseunicorns/zarf/releases
+ZARF_VERSION="v0.75.1"
 
-# Also download the init package into the current directory (no sudo needed)
+sudo curl -Lo /usr/local/bin/zarf \
+  "https://github.com/defenseunicorns/zarf/releases/download/${ZARF_VERSION}/zarf_${ZARF_VERSION}_Linux_amd64"
+sudo chmod +x /usr/local/bin/zarf
+zarf version   # should print v0.75.1
+
+# Download the matching init package into the current directory
 curl -Lo "zarf-init-amd64-${ZARF_VERSION}.tar.zst" \
   "https://github.com/defenseunicorns/zarf/releases/download/${ZARF_VERSION}/zarf-init-amd64-${ZARF_VERSION}.tar.zst"
 ```
@@ -113,8 +116,11 @@ export ZARF_CIS_VERSION="2.20.3"
 export ZARF_NGINX_VERSION="5.3.2"
 export ZARF_CERT_VERSION="v1.19.1"
 
+# Make scripts executable (only needed once after cloning/unzipping)
+chmod +x scripts/create-package.sh scripts/deploy-package.sh
+
 # Build WITHOUT cert-manager (default -- smaller bundle)
-chmod +x scripts/create-package.sh
+# Note: create-package.sh does not need sudo
 ./scripts/create-package.sh
 
 # Build WITH cert-manager bundled

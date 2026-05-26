@@ -1,28 +1,29 @@
 # values/cert-manager.yaml
 # ---------------------------------------------------------------------------
-# Helm values for jetstack/cert-manager chart v1.19.1
+# Helm values for cert-manager OCI chart oci://quay.io/jetstack/charts/cert-manager
+# Current version: v1.20.2
+# Reference: https://cert-manager.io/docs/installation/helm/
 # All ###ZARF_VAR_*### tokens are substituted by Zarf at deploy time.
-# Reference: https://cert-manager.io/docs/installation/helm/#configuration
 # ---------------------------------------------------------------------------
 
-# Install cert-manager CRDs as part of the Helm release.
-# This is the recommended approach for air-gapped environments because it
-# keeps CRD lifecycle tied to the chart. An alternative is to apply CRDs
-# separately with `kubectl apply -f`, but that's harder to manage in Zarf.
-installCRDs: true
+# Install CRDs as part of the Helm release.
+# NOTE: parameter renamed from installCRDs (deprecated) to crds.enabled in v1.15+
+crds:
+  enabled: true
+  # Keep CRDs on helm uninstall to prevent accidental data loss.
+  # Matches the default chart behavior since v1.15.
+  keep: true
 
-# Replica count for the main cert-manager controller.
 replicaCount: 1
 
 # ---------------------------------------------------------------------------
-# Image configuration — Zarf rewrites these at deploy time.
+# Image configuration — Zarf rewrites repository at deploy time.
 # ---------------------------------------------------------------------------
 image:
   repository: quay.io/jetstack/cert-manager-controller
   tag: "###ZARF_VAR_CERT_MANAGER_VERSION###"
   pullPolicy: IfNotPresent
 
-# Cainjector manages CA bundle injection into webhook configurations.
 cainjector:
   enabled: true
   replicaCount: 1
@@ -38,13 +39,13 @@ cainjector:
       cpu: 200m
       memory: 256Mi
 
-# Webhook handles admission validation for cert-manager CRs.
 webhook:
   replicaCount: 1
   image:
     repository: quay.io/jetstack/cert-manager-webhook
     tag: "###ZARF_VAR_CERT_MANAGER_VERSION###"
     pullPolicy: IfNotPresent
+  timeoutSeconds: 30
   resources:
     requests:
       cpu: 50m
@@ -52,11 +53,26 @@ webhook:
     limits:
       cpu: 200m
       memory: 256Mi
-  # Timeout for webhook calls — increase if you see admission timeout errors.
-  timeoutSeconds: 30
+
+# startupapicheck is a one-shot Job that validates the webhook TLS is ready.
+# It uses a separate image; Zarf must have it bundled to run in air-gap.
+startupapicheck:
+  enabled: true
+  image:
+    repository: quay.io/jetstack/cert-manager-startupapicheck
+    tag: "###ZARF_VAR_CERT_MANAGER_VERSION###"
+    pullPolicy: IfNotPresent
+
+# acmesolver image is referenced by the chart for ACME HTTP01 challenges.
+# Bundle it even if you don't plan to use ACME in the air-gap environment —
+# the chart will fail to start pods if the image isn't available.
+acmesolver:
+  image:
+    repository: quay.io/jetstack/cert-manager-acmesolver
+    tag: "###ZARF_VAR_CERT_MANAGER_VERSION###"
 
 # ---------------------------------------------------------------------------
-# Resource limits for the main controller.
+# Resources for the main controller
 # ---------------------------------------------------------------------------
 resources:
   requests:
@@ -67,32 +83,19 @@ resources:
     memory: 512Mi
 
 # ---------------------------------------------------------------------------
-# Prometheus metrics — expose for Grafana/Prometheus Operator if present.
+# Prometheus metrics
 # ---------------------------------------------------------------------------
 prometheus:
   enabled: true
   servicemonitor:
-    enabled: false   # Set true if Prometheus Operator is installed.
-    prometheusInstance: default
-    targetPort: 9402
-    path: /metrics
-    interval: 60s
-    scrapeTimeout: 30s
+    enabled: false
 
 # ---------------------------------------------------------------------------
-# DNS config — required in some air-gapped environments where internal DNS
-# resolution of ACME challenge records may be slow.
+# Node placement
 # ---------------------------------------------------------------------------
-# dnsConfig:
-#   nameservers:
-#     - 10.0.0.10
-
-# Node placement — leave empty for lab.
 nodeSelector: {}
 tolerations: []
 affinity: {}
 
-# Global options
 global:
-  # Set to true to log additional information about cert-manager internals.
   logLevel: 2

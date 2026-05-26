@@ -1,0 +1,22 @@
+# inventory/hosts
+# ---------------------------------------------------------------------------
+# Ansible inventory for the F5 CIS air-gap deployment.
+#
+# If you are running Ansible directly on the k3s master node (most common
+# for this lab setup), use connection=local so no SSH is required.
+#
+# If you are running Ansible from a separate control machine, replace
+# ansible_host with the actual IP of the k3s master and remove
+# ansible_connection=local.
+# ---------------------------------------------------------------------------
+
+[k3s_master]
+master ansible_host=127.0.0.1 ansible_connection=local ansible_user=ubuntu
+
+[k3s_workers]
+# Add worker nodes here if needed for future playbooks
+# worker1 ansible_host=10.x.x.x ansible_user=ubuntu
+
+[k3s:children]
+k3s_master
+k3s_workers

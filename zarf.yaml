@@ -43,12 +43,12 @@ variables:
     prompt: false
 
   - name: NGINX_VERSION
-    default: "5.3.2"
+    default: "5.4.3"
     description: "nginx-plus-ingress image tag"
     prompt: false
 
   - name: CERT_MANAGER_VERSION
-    default: "v1.19.1"
+    default: "v1.20.2"
     description: "cert-manager controller/cainjector/webhook image tag and chart version"
     prompt: false
 
@@ -75,12 +75,13 @@ components:
     images:
       # Zarf bundles this image during `create`. Tag is resolved from the
       # CIS_VERSION variable at create time via --set CIS_VERSION=<tag>.
-      - docker.io/f5networks/k8s-bigip-ctlr:###ZARF_VAR_CIS_VERSION###
+      - docker.io/f5networks/k8s-bigip-ctlr:###ZARF_PKG_TMPL_CIS_VERSION###
 
     charts:
       - name: f5-bigip-ctlr
-        # OCI chart on Docker Hub; Zarf pulls and embeds during create.
-        url: oci://registry-1.docker.io/f5networks/f5-bigip-ctlr
+        # Traditional Helm repo — F5 does not publish an OCI chart for CIS.
+        # Source: https://github.com/F5Networks/k8s-bigip-ctlr
+        url: https://f5networks.github.io/charts/stable
         version: "0.0.35"
         namespace: kube-system
         valuesFiles:
@@ -129,12 +130,12 @@ components:
     description: "NGINX Plus Ingress Controller with App Protect WAF"
 
     images:
-      - private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:###ZARF_VAR_NGINX_VERSION###
+      - private-registry.nginx.com/nginx-ic-nap/nginx-plus-ingress:###ZARF_PKG_TMPL_NGINX_VERSION###
 
     charts:
       - name: nginx-ingress
-        url: oci://ghcr.io/nginxinc/charts/nginx-ingress
-        version: "2.1.0"
+        url: oci://ghcr.io/nginx/charts/nginx-ingress
+        version: "2.5.3"
         namespace: nginx-ingress
         valuesFiles:
           - values/nginx-ingress.yaml
@@ -183,18 +184,20 @@ components:
     description: "cert-manager TLS certificate lifecycle management (opt-in)"
 
     images:
-      - quay.io/jetstack/cert-manager-controller:###ZARF_VAR_CERT_MANAGER_VERSION###
-      - quay.io/jetstack/cert-manager-cainjector:###ZARF_VAR_CERT_MANAGER_VERSION###
-      - quay.io/jetstack/cert-manager-webhook:###ZARF_VAR_CERT_MANAGER_VERSION###
-      # ctl is used by some cert-manager tooling; bundle it to avoid surprises
-      - quay.io/jetstack/cert-manager-ctl:###ZARF_VAR_CERT_MANAGER_VERSION###
+      - quay.io/jetstack/cert-manager-controller:###ZARF_PKG_TMPL_CERT_MANAGER_VERSION###
+      - quay.io/jetstack/cert-manager-cainjector:###ZARF_PKG_TMPL_CERT_MANAGER_VERSION###
+      - quay.io/jetstack/cert-manager-webhook:###ZARF_PKG_TMPL_CERT_MANAGER_VERSION###
+      # acmesolver handles ACME HTTP01 challenges; startupapicheck is a
+      # one-shot job that validates the webhook is ready after install.
+      - quay.io/jetstack/cert-manager-acmesolver:###ZARF_PKG_TMPL_CERT_MANAGER_VERSION###
+      - quay.io/jetstack/cert-manager-startupapicheck:###ZARF_PKG_TMPL_CERT_MANAGER_VERSION###
 
     charts:
       - name: cert-manager
-        url: https://charts.jetstack.io
-        # repoName is inferred from the URL; explicit for clarity
-        repoName: jetstack
-        version: "###ZARF_VAR_CERT_MANAGER_VERSION###"
+        # OCI registry is the source of truth per cert-manager docs;
+        # the legacy https://charts.jetstack.io lags by a few hours.
+        url: oci://quay.io/jetstack/charts/cert-manager
+        version: "###ZARF_PKG_TMPL_CERT_MANAGER_VERSION###"
         namespace: cert-manager
         valuesFiles:
           - values/cert-manager.yaml
@@ -247,9 +250,6 @@ components:
     images:
       - docker.io/nginxdemos/nginx-hello:latest
       - docker.io/balabit/syslog-ng:latest
-      # Source manifest specifies docker_tag: latest; original prompt table said
-      # 1.0.0. Using latest to match the source manifest — pin to a digest or
-      # explicit tag in production to avoid non-deterministic builds.
-      - docker.io/dialtone21/f5_cis_ee:latest
+      - docker.io/dialtone21/f5_cis_ee:1.0.0
     # No chart or manifests — images only. Reference them in your own
     # Kubernetes manifests after deploy using the Zarf-rewritten registry path.

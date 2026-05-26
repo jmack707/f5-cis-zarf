@@ -1,0 +1,17 @@
+# group_vars/all/all.yaml
+# ---------------------------------------------------------------------------
+# Non-sensitive variables for the F5 CIS deployment.
+# Sensitive values (passwords, JWTs) go in vault.yaml.
+# ---------------------------------------------------------------------------
+
+# Kubernetes namespaces
+k8s_namespace_cis: kube-system
+k8s_namespace_nginx: nginx-ingress
+
+# Secret names — must match values in zarf.yaml / Helm values files
+bigip_secret_name: bigip-login
+nginx_license_secret_name: nplus-license
+nginx_registry_secret_name: regcred
+
+# NGINX Plus registry
+nginx_registry: private-registry.nginx.com
