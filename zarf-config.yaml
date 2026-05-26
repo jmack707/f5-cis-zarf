@@ -31,7 +31,7 @@ package:
     set:
       # ---------- BIG-IP --------------------------------------------------
       # Management IP of the BIG-IP appliance CIS will control.
-      BIGIP_URL: "10.1.1.12"
+      BIGIP_URL: "10.1.1.4"
 
       # BIG-IP partition CIS will use for virtual servers, pools, and nodes.
       # This partition must already exist; CIS will not create it.

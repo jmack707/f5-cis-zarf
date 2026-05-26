@@ -51,6 +51,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---------------------------------------------------------------------------
+# Color helpers
+# ---------------------------------------------------------------------------
+_red()    { $NO_COLOR && echo "$*" || echo -e "\033[0;31m$*\033[0m"; }
+_green()  { $NO_COLOR && echo "$*" || echo -e "\033[0;32m$*\033[0m"; }
+_yellow() { $NO_COLOR && echo "$*" || echo -e "\033[0;33m$*\033[0m"; }
+_blue()   { $NO_COLOR && echo "$*" || echo -e "\033[0;34m$*\033[0m"; }
+_bold()   { $NO_COLOR && echo "$*" || echo -e "\033[1m$*\033[0m"; }
+
+die()  { _red "ERROR: $*" >&2; exit 1; }
+info() { _blue "==> $*"; }
+ok()   { _green "    OK: $*"; }
+warn() { _yellow "  WARN: $*"; }
+
+# ---------------------------------------------------------------------------
 # Load credentials
 # Looks for credentials.env in the project root. Environment variables take
 # precedence over file values, so CI systems can inject credentials via env
@@ -70,6 +84,10 @@ fi
 # Verify required credentials are now set (from file or env)
 DOCKER_USER="${DOCKER_USER:-}"
 DOCKER_PASS="${DOCKER_PASS:-}"
+# NGINX_JWT accepts either token content (paste the JWT string) or a file path.
+# NGINX_JWT_TOKEN and NGINX_JWT_FILE are explicit aliases; NGINX_JWT is checked last.
+NGINX_JWT_TOKEN="${NGINX_JWT_TOKEN:-}"
+NGINX_JWT_FILE="${NGINX_JWT_FILE:-}"
 NGINX_JWT="${NGINX_JWT:-}"
 
 # ---------------------------------------------------------------------------
@@ -79,19 +97,6 @@ CIS_VERSION="${ZARF_CIS_VERSION:-2.20.3}"
 NGINX_VERSION="${ZARF_NGINX_VERSION:-5.3.2}"
 CERT_VERSION="${ZARF_CERT_VERSION:-v1.19.1}"
 
-# ---------------------------------------------------------------------------
-# Color helpers
-# ---------------------------------------------------------------------------
-_red()    { $NO_COLOR && echo "$*" || echo -e "\033[0;31m$*\033[0m"; }
-_green()  { $NO_COLOR && echo "$*" || echo -e "\033[0;32m$*\033[0m"; }
-_yellow() { $NO_COLOR && echo "$*" || echo -e "\033[0;33m$*\033[0m"; }
-_blue()   { $NO_COLOR && echo "$*" || echo -e "\033[0;34m$*\033[0m"; }
-_bold()   { $NO_COLOR && echo "$*" || echo -e "\033[1m$*\033[0m"; }
-
-die()  { _red "ERROR: $*" >&2; exit 1; }
-info() { _blue "==> $*"; }
-ok()   { _green "    OK: $*"; }
-warn() { _yellow "  WARN: $*"; }
 
 # ---------------------------------------------------------------------------
 # Build the component list for zarf package create.
@@ -139,17 +144,43 @@ ok "Docker Hub authenticated."
 # ---------------------------------------------------------------------------
 # NGINX private registry login
 # JWT token is the password; username is literally "jwt".
+# Resolves the token from NGINX_JWT_TOKEN (raw content) or NGINX_JWT_FILE
+# (path to .jwt file). NGINX_JWT_TOKEN takes precedence.
 # ---------------------------------------------------------------------------
 info "Logging in to private-registry.nginx.com (JWT auth)..."
-if [[ -z "${NGINX_JWT}" ]]; then
-  die "NGINX_JWT must be set to the path of your NGINX Plus license .jwt file.
-  Export: NGINX_JWT=/path/to/nginx-repo.jwt"
-fi
-[[ -f "${NGINX_JWT}" ]] || die "NGINX_JWT file not found: ${NGINX_JWT}"
 
-JWT_TOKEN=$(cat "${NGINX_JWT}")
-echo "${JWT_TOKEN}" | docker login private-registry.nginx.com \
-  --username jwt \
+if [[ -n "${NGINX_JWT_TOKEN}" ]]; then
+  JWT_TOKEN="${NGINX_JWT_TOKEN}"
+  ok "Using NGINX_JWT_TOKEN."
+elif [[ -n "${NGINX_JWT_FILE}" ]]; then
+  [[ -f "${NGINX_JWT_FILE}" ]] || die "NGINX_JWT_FILE not found: ${NGINX_JWT_FILE}"
+  JWT_TOKEN=$(cat "${NGINX_JWT_FILE}")
+  ok "Using NGINX_JWT_FILE: ${NGINX_JWT_FILE}"
+elif [[ -n "${NGINX_JWT}" ]]; then
+  if [[ -f "${NGINX_JWT}" ]]; then
+    JWT_TOKEN=$(cat "${NGINX_JWT}")
+    ok "Using NGINX_JWT as file path: ${NGINX_JWT}"
+  else
+    JWT_TOKEN="${NGINX_JWT}"
+    ok "Using NGINX_JWT as token content."
+  fi
+else
+  die "No NGINX JWT configured. In credentials.env set one of:
+  NGINX_JWT=\"<paste token content here>\"
+  NGINX_JWT=\"/path/to/nginx-repo.jwt\"  (file path also works)"
+fi
+
+# Strip all whitespace/newlines — pasting a JWT often adds a trailing newline.
+JWT_TOKEN=$(echo "${JWT_TOKEN}" | tr -d '[:space:]')
+
+# Basic sanity check
+[[ "${JWT_TOKEN}" == eyJ* ]] || die "NGINX JWT does not look valid (expected eyJ... prefix)."
+
+# IMPORTANT: per F5 docs, the JWT is the USERNAME and the password is the
+# literal string "none". This is the opposite of what you might expect.
+# https://docs.nginx.com/nginx-ingress-controller/install/helm/plus/
+echo "none" | docker login private-registry.nginx.com \
+  --username "${JWT_TOKEN}" \
   --password-stdin
 ok "private-registry.nginx.com authenticated."
 
