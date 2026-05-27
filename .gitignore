@@ -2,12 +2,10 @@
 credentials.env
 .env
 
-# Ansible vault — encrypt before committing, or exclude entirely
-# group_vars/all/vault.yaml should be encrypted with ansible-vault
-# before being committed. Exclude the unencrypted version as a safety net.
-# Uncomment the line below if your team stores encrypted vault files in git:
-# group_vars/all/vault.yaml
-*.jwt
+# Ansible vault — exclude unencrypted vault file entirely.
+# Encrypt with: ansible-vault encrypt group_vars/all/vault.yaml
+# If storing the encrypted file in git, comment out the line below.
+group_vars/all/vault.yaml
 
 # Harbor CA cert (site-specific, not project config)
 certs/harbor-ca.crt

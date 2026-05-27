@@ -229,23 +229,14 @@ else
     info "Running zarf init..."
     # If a pre-downloaded init package is available, use it.
     # Otherwise, Zarf will look for it alongside the app package.
-    INIT_FLAGS="${CONFIRM_FLAG}"
-    if [[ -n "${ZARF_INIT_PKG:-}" && -f "${ZARF_INIT_PKG}" ]]; then
-      INIT_FLAGS="${INIT_FLAGS} --components agent,registry"
-      info "Using init package: ${ZARF_INIT_PKG}"
-      zarf init ${INIT_FLAGS} --package "${ZARF_INIT_PKG}" || die "zarf init failed."
-    else
-      # Auto-discover init package in current directory
-      INIT_PKG=$(ls -t zarf-init-amd64-*.tar.zst 2>/dev/null | head -1 || true)
-      if [[ -n "${INIT_PKG}" ]]; then
-        info "Found init package: ${INIT_PKG}"
-        zarf init ${INIT_FLAGS} --package "${INIT_PKG}" || die "zarf init failed."
-      else
-        die "No zarf-init package found. Download the matching init package from:
-  https://github.com/defenseunicorns/zarf/releases
-and place it in the current directory, or set ZARF_INIT_PKG=/path/to/init.tar.zst"
-      fi
-    fi
+    # zarf init auto-discovers the init package from the current directory.
+    # No --package flag exists; just ensure zarf-init-amd64-*.tar.zst is present.
+    INIT_PKG=$(ls -t zarf-init-amd64-*.tar.zst 2>/dev/null | head -1 || true)
+    [[ -n "${INIT_PKG}" ]] || die "No zarf-init package found in current directory.
+  Download from: https://github.com/defenseunicorns/zarf/releases/tag/v0.75.1
+  Expected filename: zarf-init-amd64-v0.75.1.tar.zst"
+    info "Using init package: ${INIT_PKG}"
+    zarf init ${CONFIRM_FLAG} --log-level info || die "zarf init failed."
     ok "Zarf initialized."
   fi
 fi

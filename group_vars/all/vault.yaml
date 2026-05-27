@@ -13,7 +13,9 @@
 # BIG-IP credentials (used to create the bigip-login secret in kube-system)
 vault_bigip_username: "admin"
 vault_bigip_password: "your-bigip-password-here"
+vault_bigip_url: "10.1.1.12"      # BIG-IP management IP (no https://, added by playbook)
 
-# Path to your NGINX Plus .jwt license file on the Ansible control node.
-# This file is read locally and its contents are stored as a Kubernetes secret.
-vault_nginx_jwt_path: "/home/ubuntu/f5-cis-zarf/nginx-repo.jwt"
+# NGINX Plus JWT token content — paste the full token string directly here.
+# Open your .jwt file, copy everything (the eyJ... string), paste below.
+# No file path needed; the token is stored directly in the encrypted vault.
+vault_nginx_jwt_content: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6..."

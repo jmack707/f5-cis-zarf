@@ -1,0 +1,20 @@
+# group_vars/all/vault.yaml.example
+# ---------------------------------------------------------------------------
+# Copy this file to vault.yaml and fill in your values.
+#
+#   cp group_vars/all/vault.yaml.example group_vars/all/vault.yaml
+#   vi group_vars/all/vault.yaml
+#
+# vault.yaml is gitignored. This example file is safe to commit.
+# Encrypt vault.yaml before sharing: ansible-vault encrypt group_vars/all/vault.yaml
+# ---------------------------------------------------------------------------
+
+# BIG-IP credentials (creates the bigip-login secret in kube-system)
+vault_bigip_username: "admin"
+vault_bigip_password: "your-bigip-password-here"
+vault_bigip_url: "10.1.1.12"         # BIG-IP management IP (no https://)
+
+# NGINX Plus JWT token content
+# Paste the full token string (eyJ...) from your .jwt license file.
+# Download from: MyF5 → My Products & Plans → NGINX Plus → Manage Licenses → Download JWT
+vault_nginx_jwt_content: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6..."
